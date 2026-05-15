@@ -1,0 +1,28 @@
+# NDA-protected: never commit licensed-book-derived training data
+data/processed/books/
+
+# Intermediate scratch
+data/combined_training.jsonl
+
+# Upstream public repos (cloned by build_training_data.sh) — large, reproducible
+data/raw_github/
+
+# NOTE: data/processed/free_sources/ and data/shuffled_training.jsonl ARE committed
+# so RunPod clones can train immediately without re-downloading upstream sources.
+# See data/processed/free_sources/NOTICE.md for source attribution and licensing.
+
+# Model artifacts — keep locally, never push adapter weights
+dave_model/
+*.bin
+*.safetensors
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Misc
+.env
+*.log

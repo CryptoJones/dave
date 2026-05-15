@@ -67,7 +67,7 @@ mkdir -p "${DAVE_OUTPUT_DIR}"
 echo ""
 echo "Installing required packages..."
 pip install --quiet torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install --quiet transformers peft accelerate datasets bitsandbytes wandb scipy
+pip install --quiet "transformers>=4.45" "peft>=0.13" "accelerate>=1.0" "datasets>=3.0" "bitsandbytes>=0.44" "trl>=0.12" wandb scipy
 
 # Verify installation
 echo ""

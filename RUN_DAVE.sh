@@ -1,103 +1,72 @@
 #!/bin/bash
-# Dave Execution Script - RUN THESE COMMANDS IN ORDER
-# YOU execute every step on YOUR machine - no data leaves your control
+# Dave one-shot pipeline: build data → train adapter.
+#
+# Everything runs on YOUR machine (or RunPod pod). No data leaves your control.
+#
+# Configurable paths (export before running):
+#   DAVE_DATA_DIR       (default: ./data)
+#   DAVE_OUTPUT_DIR     (default: ./dave_adapter)
+#   DAVE_BOOKS_DIR      (only used if DAVE_INCLUDE_BOOKS=1)
+#   DAVE_INCLUDE_BOOKS  (0/1, default 0 — opt-in for licensed-book pairs)
+#   DAVE_EPOCHS         (default: 2)
+#
+# This script is idempotent: re-runs reuse cached downloads where possible.
 
 set -euo pipefail
 
-# --- Configurable paths ---
-# Override these before running:
-#   export DAVE_DATA_DIR=/path/to/data
-#   export DAVE_OUTPUT_DIR=/path/to/adapters/dave
-#   export DAVE_BOOKS_DIR=/path/to/your/licensed/books
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$REPO_DIR"
 
-DAVE_DATA_DIR="${DAVE_DATA_DIR:-$(pwd)/data}"
-DAVE_OUTPUT_DIR="${DAVE_OUTPUT_DIR:-/home/akclark/Source/adapters/dave}"
-DAVE_BOOKS_DIR="${DAVE_BOOKS_DIR:-/path/to/your/books}"
+export DAVE_DATA_DIR="${DAVE_DATA_DIR:-$REPO_DIR/data}"
+export DAVE_OUTPUT_DIR="${DAVE_OUTPUT_DIR:-$REPO_DIR/dave_adapter}"
+export DAVE_INCLUDE_BOOKS="${DAVE_INCLUDE_BOOKS:-0}"
 
-echo "=== Dave Training Execution Guide ==="
-echo ""
-echo "Current paths (override with environment variables):"
-echo "  DAVE_DATA_DIR=$DAVE_DATA_DIR"
-echo "  DAVE_OUTPUT_DIR=$DAVE_OUTPUT_DIR"
-echo "  DAVE_BOOKS_DIR=$DAVE_BOOKS_DIR"
-echo ""
-echo "Example overrides:"
-echo "  export DAVE_DATA_DIR=~/Source/repos/Dave/data"
-echo "  export DAVE_OUTPUT_DIR=~/Source/adapters/dave"
-echo "  export DAVE_BOOKS_DIR=~/books/security"
+echo "=============================================="
+echo "  Dave — End-to-End Training Pipeline"
+echo "=============================================="
+echo "  Data dir:     $DAVE_DATA_DIR"
+echo "  Output dir:   $DAVE_OUTPUT_DIR"
+echo "  Include books: $DAVE_INCLUDE_BOOKS"
+echo "=============================================="
 echo ""
 
-echo "STEP 1: Prepare Environment (Run ONCE)"
-echo "-----------------------------------------------------------------------"
-echo "cd $(pwd)"
-echo "chmod +x setup_dave.sh RUN_DAVE.sh"
-echo "./setup_dave.sh"
+# Step 1 — Environment
+if ! python3 -c "import torch, transformers, peft, trl, bitsandbytes" 2>/dev/null; then
+    echo "[1/3] Installing dependencies via setup_dave.sh ..."
+    bash "$REPO_DIR/setup_dave.sh"
+else
+    echo "[1/3] Dependencies already installed."
+fi
 echo ""
 
-echo "STEP 2: Process Your Licensed Books (RUN ONCE)"
-echo "-----------------------------------------------------------------------"
-echo "python3 scripts/data_collection/process_books_nda_fixed.py \$DAVE_BOOKS_DIR"
-echo ""
-echo "Output: \$DAVE_DATA_DIR/processed/books/books_training.jsonl"
+# Step 2 — Build training data
+echo "[2/3] Building training dataset ..."
+bash "$REPO_DIR/build_training_data.sh"
 echo ""
 
-echo "STEP 3: Process Free Resources (YOU DO THIS MANUALLY)"
-echo "-----------------------------------------------------------------------"
-echo "# Download these legally free resources from official sources:"
-echo "# - CISA KEV Catalog (https://www.cisa.gov/known-exploited-vulnerabilities-catalog)"
-echo "# - NIST SP 800-30 Rev. 1 (https://csrc.nist.gov/publications/detail/sp/800-30/rev-1/final)"
-echo "# - NIST SP 800-53 Rev. 5 (https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final)"
-echo "# - DHS Binding Operational Directives (https://www.cisa.gov/binding-operational-directives)"
-echo "# - US-CERT Alerts (https://www.us-cert.gov/ncas/alerts)"
-echo "# - NISTIR 8286 (https://csrc.nist.gov/publications/detail/nistir/8286/final)"
-echo "# - MITRE ATT&CK® (DEFENSIVE CONTEXT ONLY) - https://attack.mitre.org/"
-echo ""
-echo "# Save each processed file to:"
-echo "# \$DAVE_DATA_DIR/processed/free_sources/[name]_training.jsonl"
-echo ""
-echo "# Example: CISA KEV (after downloading kev.json):"
-echo "python3 -c \""
-echo "import json"
-echo "with open('kev.json') as f:"
-echo "    data = json.load(f)"
-echo "for vuln in data['vulnerabilities']:"
-echo "    if 'requiredAction' in vuln and vuln['requiredAction']:"
-echo "        prompt = f'Technical finding: [{vuln[\\\"cveID\\\"]} in {vuln[\\\"vendorProject\\\"]}]'"
-echo "        completion = f'Per CISA KEV, {vuln[\\\"requiredAction\\\"]} is required by {vuln[\\\"dueDate\\\"]}. Executive summary: [APA/(ISC)²-aligned summary based on {vuln[\\\"shortDescription\\\"]}].'"
-echo "        print(json.dumps({'prompt': prompt, 'completion': completion}))"
-echo "\" >> \"\$DAVE_DATA_DIR/processed/free_sources/kev_training.jsonl\""
+# Sanity-check: training file exists and contains data
+TRAIN_FILE="$DAVE_DATA_DIR/shuffled_training.jsonl"
+if [ ! -s "$TRAIN_FILE" ]; then
+    echo "ERROR: training file is missing or empty: $TRAIN_FILE"
+    exit 1
+fi
+echo "Training file ready: $(wc -l < "$TRAIN_FILE") pairs"
 echo ""
 
-echo "STEP 4: Combine and Shuffle All Data (RUN ONCE)"
-echo "-----------------------------------------------------------------------"
-echo "cat \"\$DAVE_DATA_DIR/processed/books/books_training.jsonl\" \\"
-echo "    \"\$DAVE_DATA_DIR/processed/free_sources/\"*_training.jsonl \\"
-echo "    > \"\$DAVE_DATA_DIR/combined_training.jsonl\""
-echo ""
-echo "shuf \"\$DAVE_DATA_DIR/combined_training.jsonl\" > \"\$DAVE_DATA_DIR/shuffled_training.jsonl\""
-echo ""
-echo "wc -l \"\$DAVE_DATA_DIR/shuffled_training.jsonl\""
+# Step 3 — Train
+echo "[3/3] Training Dave (QLoRA on Llama-3.3-70B-Instruct) ..."
+echo "      This requires a CUDA GPU (A100 80GB recommended)."
+python3 "$REPO_DIR/train_dave.py"
 echo ""
 
-echo "STEP 5: Train Dave (RUN ONCE - requires A100 80GB on RunPod)"
-echo "-----------------------------------------------------------------------"
-echo "DAVE_DATA_DIR=\$DAVE_DATA_DIR DAVE_OUTPUT_DIR=\$DAVE_OUTPUT_DIR python3 train_dave.py"
+echo "=============================================="
+echo "  Training complete"
+echo "=============================================="
+ls -la "$DAVE_OUTPUT_DIR"
 echo ""
-
-echo "STEP 6: Verify Training Complete"
-echo "-----------------------------------------------------------------------"
-echo "ls -la \"\$DAVE_OUTPUT_DIR\""
-echo "# You should see: adapter_model.bin and adapter_config.json"
-echo ""
-
-echo "=== IMPORTANT REMINDERS ==="
-echo "-----------------------------------------------------------------------"
-echo "• Dave is ONLY for authorized US security assessment report writing"
-echo "• NEVER use it without explicit written permission for specific targets"
-echo "• ALWAYS review outputs — Dave is an assistant, not a replacement for expertise"
-echo "• Your NDA remains intact — book details never left your machine"
-echo "• Adapter in \$DAVE_OUTPUT_DIR contains ONLY your licensed knowledge + free resources"
-echo "• Base model (meta-llama/Llama-3.3-70B-Instruct) remains unchanged"
-echo ""
-echo "=== You're Ready to Begin ==="
-echo "Start with STEP 1 above."
+echo "REMINDERS:"
+echo "  • Dave outputs are DRAFT material. A qualified human reviewer must"
+echo "    verify accuracy and authorization before any client delivery."
+echo "  • Dave is for authorized US security assessment report writing only."
+echo "  • Adapter contains derived knowledge from licensed/permissive sources."
+echo "    Redistribution must respect each source's license (see README.md)."

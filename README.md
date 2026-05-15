@@ -121,20 +121,26 @@ This is not a technical limitation. It is a professional obligation.
 Dave/
 ├── LICENSE
 ├── README.md
+├── LIMITATIONS.md                          # Read before operational deployment
 ├── USAGE_POLICY.md
-├── RUN_DAVE.sh                         # Step-by-step execution guide
-├── setup_dave.sh                       # Environment setup
+├── RUN_DAVE.sh                             # One-shot wrapper: build data → train
+├── setup_dave.sh                           # Environment / dependency install
+├── build_training_data.sh                  # Re-runnable data pipeline (idempotent)
+├── train_dave.py                           # QLoRA training entry point
 ├── data/
 │   ├── processed/
-│   │   ├── books/                      # NDA-compliant book training pairs
-│   │   └── free_sources/               # CISA KEV, NIST, MITRE, etc.
-│   └── combined_training.jsonl         # Final shuffled training data
-├── scripts/
-│   └── data_collection/
-│       ├── process_books_nda.py        # NDA-safe book processor
-│       └── process_books_nda_fixed.py  # Production version with full classification
-├── src/
-└── docs/
+│   │   ├── books/                          # Opt-in licensed-book pairs (NDA-safe)
+│   │   └── free_sources/                   # KEV / NIST / MITRE / DHS / Trail of Bits
+│   ├── raw_github/                         # Cloned public sources (gitignored)
+│   └── shuffled_training.jsonl             # Final training file (~11k pairs)
+└── scripts/
+    └── data_collection/
+        ├── process_cisa_kev.py             # CISA KEV catalog → JSONL
+        ├── process_nist.py                 # NIST SP 800-30/53, NISTIR 8286
+        ├── process_dhs_cisa.py             # CISA Binding Operational Directives
+        ├── process_mitre_attack.py         # MITRE ATT&CK (defensive context)
+        ├── process_trail_of_bits.py        # Trail of Bits public audits (CC-BY-SA)
+        └── process_books_nda_fixed.py      # NDA-safe book processor (opt-in)
 ```
 
 ---
@@ -143,7 +149,7 @@ Dave/
 
 | Source | Description | License |
 |---|---|---|
-| Licensed Security Books | PDF/EPUB/MOBI — findings, remediation, methodology sections | NDA-compliant (your own licensed copies) |
+| Trail of Bits public security reviews | ~1,800 real findings with severity, description, recommendations | CC BY-SA 4.0 |
 | CISA KEV Catalog | Known Exploited Vulnerabilities with required actions and due dates | Public Domain |
 | NIST SP 800-30 Rev. 1 | Risk assessment guidance | Public Domain |
 | NIST SP 800-53 Rev. 5 | Security and privacy controls | Public Domain |
@@ -151,18 +157,40 @@ Dave/
 | DHS Binding Operational Directives | Federal cybersecurity directives | Public Domain |
 | US-CERT Alerts | Vulnerability and threat alerts | Public Domain |
 | MITRE ATT&CK® | Defensive context mappings only | CC BY 4.0 |
+| Licensed Security Books *(opt-in)* | PDF/EPUB/MOBI extracted via NDA-safe processor — disabled by default; enable with `DAVE_INCLUDE_BOOKS=1` | NDA-compliant (your own licensed copies) |
 
-### NDA-Compliant Book Processing
+### Attribution (CC BY-SA 4.0 content)
 
-Dave's `process_books_nda_fixed.py` extracts reporting-relevant sections from your licensed security
-books without logging filenames, paths, or content details. Your NDA stays intact. The output is
-anonymous training pairs — the model learns your books' writing style without anyone else ever
-seeing what books you own.
+Training pairs derived from `trailofbits/publications` (and any other CC BY-SA source
+added later) carry an attribution line in every completion. Downstream uses of the
+fine-tuned adapter inherit the share-alike obligation under CC BY-SA 4.0 for content
+materially derived from those sources. The Apache 2.0 license on Dave's own code and
+configuration is unaffected.
 
-Run it against your own licensed collection:
+### Web3 / Smart-Contract Filter
+
+Trail of Bits' public corpus is web3-heavy. `process_trail_of_bits.py` skips any
+finding whose title, description, or type matches a pattern from a configurable
+deny-list (Solidity, reentrancy, EVM, oracle manipulation, ERC-20/721/1155, DeFi,
+flash loans, MEV, blockchain, on/off-chain, etc.). This keeps Dave focused on
+general-purpose security writing rather than smart-contract auditing. Toggle or
+extend `WEB3_TERMS` in that script if your engagements include web3 work.
+
+### NDA-Compliant Book Processing (opt-in)
+
+`process_books_nda_fixed.py` extracts reporting-relevant sections from your own
+licensed security books. It never logs filenames, paths, or content details — the
+output is anonymous training pairs.
+
+**Books are disabled by default.** The heuristic extraction yields a mix of useful
+prose and table-of-contents / index noise (books are written for humans, not as
+report exemplars). Enable only if you have curated your library and accept the
+quality trade-off:
 
 ```bash
-python3 scripts/data_collection/process_books_nda_fixed.py /path/to/your/books
+export DAVE_INCLUDE_BOOKS=1
+export DAVE_BOOKS_DIR=/path/to/your/books
+./build_training_data.sh
 ```
 
 ---
@@ -170,30 +198,54 @@ python3 scripts/data_collection/process_books_nda_fixed.py /path/to/your/books
 ## Quick Start
 
 ```bash
-# Step 1: Prepare environment
-chmod +x setup_dave.sh RUN_DAVE.sh
+# 1. One-time environment setup (installs PyTorch, transformers, peft, trl, bitsandbytes, ...)
+chmod +x setup_dave.sh build_training_data.sh RUN_DAVE.sh
 ./setup_dave.sh
 
-# Step 2: Process your licensed books
-python3 scripts/data_collection/process_books_nda_fixed.py /path/to/your/books
+# 2. Choose where data and the trained adapter live
+export DAVE_DATA_DIR=$(pwd)/data
+export DAVE_OUTPUT_DIR=$(pwd)/dave_adapter
 
-# Step 3: Process free resources (see RUN_DAVE.sh for full list and commands)
-# CISA KEV, NIST publications, MITRE ATT&CK (defensive only)
+# 3. (Usually skip) Build the training dataset
+#    The committed `data/shuffled_training.jsonl` (~11k pairs from free sources)
+#    is already ready to train on. `build_training_data.sh` short-circuits if
+#    that file is present, so you can run it harmlessly. Force a full rebuild
+#    only if you want to refresh from upstream:
+#      DAVE_FORCE_REBUILD=1 ./build_training_data.sh
+#    To include your own licensed books, set DAVE_INCLUDE_BOOKS=1 and
+#    DAVE_BOOKS_DIR=/path/to/your/books, then force a rebuild.
+./build_training_data.sh
 
-# Step 4: Combine and shuffle
-cat data/processed/books/books_training.jsonl \
-    data/processed/free_sources/*_training.jsonl \
-    > data/combined_training.jsonl
-shuf data/combined_training.jsonl > data/shuffled_training.jsonl
-
-# Step 5: Train
+# 4. Train Dave (target: single A100 80GB on RunPod)
 python3 train_dave.py
 
-# Step 6: Verify
-ls -la dave_model/
+# 5. Verify
+ls -la "$DAVE_OUTPUT_DIR"     # expect adapter_config.json + adapter_model.safetensors
 ```
 
-Requires: 24GB+ VRAM (A100 recommended), Python 3.10+, CUDA 11.8+
+**Compute target:** single NVIDIA A100 80GB (RunPod). The training script uses 4-bit
+NF4 quantization with LoRA (r=16, α=32) on all attention and MLP projections, paged
+8-bit AdamW, and bf16 compute — Llama-3.3-70B fits in 80GB with room for activations.
+
+**Resulting dataset (default config, no books):** ~11k prompt/completion pairs from
+Trail of Bits audits, CISA KEV, NIST, MITRE ATT&CK, and DHS BODs. See the next section
+for source breakdown.
+
+---
+
+## Testing
+
+```bash
+pip install pytest
+python3 -m pytest tests/
+```
+
+The suite covers the pure-function helpers in every data processor and in
+`train_dave.py`'s data-quality guard. Tests that depend on `torch` /
+`transformers` are auto-skipped when those deps aren't installed (so the suite
+runs cleanly on a dev box and the same tests light up on the training pod).
+
+See `tests/README.md` for the test inventory and conventions.
 
 ---
 

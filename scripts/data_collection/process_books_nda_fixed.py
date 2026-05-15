@@ -15,13 +15,15 @@ from pathlib import Path
 
 # --- GET BOOKS DIRECTORY FROM COMMAND LINE ARGUMENT ---
 if len(sys.argv) < 2:
-    print("Usage: python3 process_books_nda.py <path_to_licensed_books_directory>")
-    print("Example: python3 process_books_nda.py /home/akclark/licensed_security_books")
+    print("Usage: python3 process_books_nda_fixed.py <path_to_licensed_books_directory>")
+    print("Example: python3 process_books_nda_fixed.py /home/akclark/books")
     sys.exit(1)
 
 BOOKS_DIR = Path(sys.argv[1])
-OUTPUT_DIR = Path("/home/akclark/Dave_repo/data/processed/books")
+DAVE_DATA_DIR = Path(os.environ.get("DAVE_DATA_DIR", str(Path.cwd() / "data")))
+OUTPUT_DIR = DAVE_DATA_DIR / "processed" / "books"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_FILE = OUTPUT_DIR / "books_training.jsonl"
 
 # --- TEXT EXTRACTION FUNCTIONS ---
 
@@ -99,17 +101,17 @@ def extract_text_from_mobi(file_path):
 
 # --- PROCESSING LOGIC (NDA-SAFE) ---
 
+_REPORTING_PATTERN = re.compile(
+    r'finding[s]?|remediation|methodology|recommendation|mitigation|'
+    r'vulnerability|risk\s+assessment|evidence|proof\s+of\s+concept|'
+    r'scan\s+results|exploitation\s+details|business\s+impact|technical\s+detail',
+    re.IGNORECASE,
+)
+
+
 def is_reporting_section(text_chunk):
-    """Heuristic to identify reporting-relevant content (findings, remediation, methodology)"""
-    reporting_indicators = [
-        r'(?i)finding[s]?', r'(?i)remediation', r'(?i)methodology',
-        r'(?i)recommendation', r'(?i)mitigation', r'(?i)vulnerability',
-        r'(?i)risk\s+assessment', r'(?i)evidence', r'(?i)proof\s+of\s+concept',
-        r'(?i)scan\s+results', r'(?i)exploitation\s+details',
-        r'(?i)business\s+impact', r'(?i)technical\s+detail'
-    ]
-    pattern = re.compile('|'.join(reporting_indicators))
-    return bool(pattern.search(text_chunk))
+    """Heuristic to identify reporting-relevant content (findings, remediation, methodology)."""
+    return bool(_REPORTING_PATTERN.search(text_chunk))
 
 def chunk_text(text, max_tokens=400):
     """Simple text chunking by sentences (user should refine as needed)"""
@@ -229,57 +231,53 @@ def main():
     processed_count = 0
     total_chunks = 0
     error_count = 0
-    
-    # Process all supported formats
-    for ext in ['pdf', 'epub', 'mobi']:
-        for file_path in BOOKS_DIR.rglob(f"*.{ext}"):
-            try:
-                # Extract text
-                if ext == 'pdf':
-                    text = extract_text_from_pdf(file_path)
-                elif ext == 'epub':
-                    text = extract_text_from_epub(file_path)
-                elif ext == 'mobi':
-                    text = extract_text_from_mobi(file_path)
-                else:
-                    continue
-                
-                if not text.strip():
-                    # Silently skip empty files to avoid logging details
-                    continue
-                
-                # Chunk and filter for reporting sections
-                chunks = chunk_text(text)
-                reporting_chunks = [c for c in chunks if is_reporting_section(c)]
-                
-                # Generate training pairs
-                output_file = OUTPUT_DIR / "books_training.jsonl"
-                with open(output_file, 'a', encoding='utf-8') as f:
+
+    # Open once in write mode so re-runs replace, not append.
+    with open(OUTPUT_FILE, 'w', encoding='utf-8') as out:
+        for ext in ['pdf', 'epub', 'mobi']:
+            for file_path in BOOKS_DIR.rglob(f"*.{ext}"):
+                try:
+                    if ext == 'pdf':
+                        text = extract_text_from_pdf(file_path)
+                    elif ext == 'epub':
+                        text = extract_text_from_epub(file_path)
+                    elif ext == 'mobi':
+                        text = extract_text_from_mobi(file_path)
+                    else:
+                        continue
+
+                    if not text.strip():
+                        continue
+
+                    chunks = chunk_text(text)
+                    reporting_chunks = [c for c in chunks if is_reporting_section(c)]
+
                     for chunk in reporting_chunks:
                         pair = generate_training_pair(chunk)
                         if pair is None:
                             continue
-                        f.write(json.dumps(pair) + '\n')
+                        out.write(json.dumps(pair) + '\n')
                         total_chunks += 1
-                
-                processed_count += 1
-                # NDA-SAFE: Never log filename or path
-                if processed_count % 10 == 0:
-                    print(f"Processed {processed_count} books... ({total_chunks} reporting chunks)")
-                    
-            except Exception as e:
-                # NDA-SAFE: Log only error type, not file details
-                error_count += 1
-                if error_count <= 5:  # Only show first few errors to avoid spam
-                    print(f"Error processing book: {type(e).__name__}")
-                continue
+
+                    processed_count += 1
+                    # NDA-SAFE: never log filename or path
+                    if processed_count % 10 == 0:
+                        print(f"Processed {processed_count} books... ({total_chunks} reporting chunks)")
+
+                except Exception as e:
+                    # NDA-SAFE: log error type + message (no filename/path).
+                    # The message is library-internal so it does not reveal book identity.
+                    error_count += 1
+                    if error_count <= 3:
+                        print(f"Error processing book: {type(e).__name__}: {e}")
+                    continue
     
     print(f"\nProcessing complete.")
     print(f"Books processed: {processed_count}")
     print(f"Reporting chunks extracted: {total_chunks}")
     if error_count > 0:
         print(f"Errors encountered: {error_count} (see above for first few)")
-    print(f"Training data saved to: {OUTPUT_DIR / 'books_training.jsonl'}")
+    print(f"Training data saved to: {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     main()
