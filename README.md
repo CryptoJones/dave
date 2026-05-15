@@ -292,6 +292,4 @@ write them — open an issue or a pull request.
 **Base Model Weights:** Meta Llama 3.3 Community License. Fine-tuned adapter weights and all
 original Dave contributions remain Apache 2.0.
 
----
-
-Proudly Made in Nebraska. Go Big Red! 🌽
+Proudly Made in Nebraska. Go Big Red! 🌽 https://xkcd.com/1654/
