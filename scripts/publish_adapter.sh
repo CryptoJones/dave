@@ -18,11 +18,13 @@
 #   ./scripts/publish_adapter.sh --hf-only             # skip GitHub Release
 #   ./scripts/publish_adapter.sh --github-only         # skip HF upload
 #   HF_REPO=user/model ./scripts/publish_adapter.sh    # override repo name
+#   RELEASE_TAG=v0.2.0 ./scripts/publish_adapter.sh    # explicit GH tag
 #
 # Defaults:
-#   HF_REPO=CryptoJones/Dave-Llama-3.3-70B-QLoRA
+#   HF_REPO=Ronin48LLC/Dave-Llama-3.3-70B-QLoRA
 #   GH_REPO=CryptoJones/dave
 #   DAVE_ADAPTER_DIR=./dave_adapter (or $DAVE_OUTPUT_DIR if set)
+#   RELEASE_TAG=auto (v0.1.0 first run, then v0.1.N+1)
 
 set -euo pipefail
 
@@ -31,7 +33,6 @@ ADAPTER_DIR="${DAVE_ADAPTER_DIR:-${DAVE_OUTPUT_DIR:-$REPO_DIR/dave_adapter}}"
 TRAIN_LOG="${DAVE_TRAIN_LOG:-/workspace/train.log}"
 HF_REPO="${HF_REPO:-Ronin48LLC/Dave-Llama-3.3-70B-QLoRA}"
 GH_REPO="${GH_REPO:-CryptoJones/dave}"
-RELEASE_TAG="${RELEASE_TAG:-v0.1.0}"
 
 HF_ONLY=0
 GH_ONLY=0
@@ -40,7 +41,7 @@ for arg in "$@"; do
         --hf-only)      HF_ONLY=1 ;;
         --github-only)  GH_ONLY=1 ;;
         --help|-h)
-            sed -n '2,28p' "$0"
+            sed -n '2,30p' "$0"
             exit 0 ;;
         *) echo "Unknown flag: $arg" >&2; exit 1 ;;
     esac
@@ -56,25 +57,42 @@ done
     exit 1
 }
 
+# Auto-pick RELEASE_TAG: bump patch from latest existing tag, or default v0.1.0.
+if [[ -z "${RELEASE_TAG:-}" ]]; then
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+        LAST_TAG=$(gh release list --repo "$GH_REPO" --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+        if [[ "$LAST_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            RELEASE_TAG="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3]+1))"
+        else
+            RELEASE_TAG="v0.1.0"
+        fi
+    else
+        RELEASE_TAG="v0.1.0"
+    fi
+fi
+
 echo "=== Publish Dave adapter ==="
 echo "  Source:         $ADAPTER_DIR"
 [[ "$GH_ONLY" -eq 0 ]] && echo "  HF Hub target:  https://huggingface.co/$HF_REPO"
 [[ "$HF_ONLY" -eq 0 ]] && echo "  GitHub Release: https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG"
 echo ""
 
-# ---------- Hugging Face Hub upload ----------
+# ---------- Hugging Face Hub upload (via Python HfApi — CLI-version-independent) ----------
 
 if [[ "$GH_ONLY" -eq 0 ]]; then
     [[ -n "${HF_TOKEN:-}" ]] || { echo "ERROR: HF_TOKEN is unset. Need a write-permission token." >&2; exit 1; }
-    if ! command -v hf >/dev/null 2>&1 && ! command -v huggingface-cli >/dev/null 2>&1; then
-        echo "Installing huggingface_hub CLI..."
-        pip install --quiet huggingface_hub --break-system-packages 2>/dev/null || pip install --quiet huggingface_hub
-    fi
-    HF_CLI=$(command -v hf || command -v huggingface-cli)
+
+    # Make sure huggingface_hub is installed. The library is the canonical
+    # entry point; we avoid the CLI here because `huggingface-cli` (0.x)
+    # and `hf` (1.x) take subtly different arguments and the upgrade has
+    # caused publish-time surprises in the past.
+    python3 -c "import huggingface_hub" 2>/dev/null || {
+        echo "Installing huggingface_hub..."
+        pip install --quiet huggingface_hub --break-system-packages 2>/dev/null \
+            || pip install --quiet huggingface_hub
+    }
 
     echo "--- Hugging Face Hub upload ---"
-    # Create the repo if it doesn't exist (idempotent — yields friendly error if it does).
-    $HF_CLI repo create "$HF_REPO" --type model --yes 2>&1 | grep -v "already created" || true
 
     # Stage the model card and inject training metrics from train.log.
     cp "$REPO_DIR/MODEL_CARD.md" "$ADAPTER_DIR/README.md"
@@ -89,11 +107,24 @@ if [[ "$GH_ONLY" -eq 0 ]]; then
         echo "  Set DAVE_TRAIN_LOG=/path/to/log to wire them up."
     fi
 
-    $HF_CLI upload "$HF_REPO" "$ADAPTER_DIR" . \
-        --repo-type model \
-        --commit-message "Initial Dave QLoRA adapter for Llama-3.3-70B"
+    HF_REPO="$HF_REPO" ADAPTER_DIR="$ADAPTER_DIR" HF_TOKEN="$HF_TOKEN" python3 - <<'PY'
+import os
+from huggingface_hub import HfApi
+api = HfApi(token=os.environ["HF_TOKEN"])
+repo = os.environ["HF_REPO"]
 
-    echo "✓ Uploaded to https://huggingface.co/$HF_REPO"
+# create_repo with exist_ok=True is idempotent.
+api.create_repo(repo_id=repo, repo_type="model", private=False, exist_ok=True)
+
+api.upload_folder(
+    folder_path=os.environ["ADAPTER_DIR"],
+    repo_id=repo,
+    repo_type="model",
+    commit_message="Publish Dave QLoRA adapter for Llama-3.3-70B",
+)
+print(f"  ✓ folder uploaded to https://huggingface.co/{repo}")
+PY
+
     echo ""
 fi
 
@@ -103,14 +134,13 @@ if [[ "$HF_ONLY" -eq 0 ]]; then
     command -v gh >/dev/null 2>&1 || { echo "ERROR: gh CLI not installed." >&2; exit 1; }
     gh auth status >/dev/null 2>&1 || { echo "ERROR: gh not authenticated. Run: gh auth login" >&2; exit 1; }
 
-    echo "--- GitHub Release ---"
-    # Pack the adapter into a single tarball for the release attachment.
+    echo "--- GitHub Release ($RELEASE_TAG) ---"
     TARBALL="/tmp/dave-adapter-${RELEASE_TAG}.tar.gz"
     tar -czf "$TARBALL" -C "$(dirname "$ADAPTER_DIR")" "$(basename "$ADAPTER_DIR")"
     echo "  packed $(du -h "$TARBALL" | cut -f1) → $TARBALL"
 
     RELEASE_NOTES=$(cat <<EOF
-Dave QLoRA adapter — initial release.
+Dave QLoRA adapter — $RELEASE_TAG.
 
 Trained on ~11k prompt/completion pairs (Trail of Bits + KEV + NIST + MITRE +
 DHS BODs) on a single A100 SXM 80GB.
@@ -129,16 +159,42 @@ EOF
 
     gh release create "$RELEASE_TAG" "$TARBALL" \
         --repo "$GH_REPO" \
-        --title "Dave $RELEASE_TAG — Initial adapter release" \
-        --notes "$RELEASE_NOTES" || {
-        # If the release already exists, upload the asset to it instead.
-        echo "  release $RELEASE_TAG exists — uploading asset to it"
+        --title "Dave $RELEASE_TAG" \
+        --notes "$RELEASE_NOTES" 2>/dev/null || {
+        echo "  release $RELEASE_TAG exists — uploading asset to it (clobber)"
         gh release upload "$RELEASE_TAG" "$TARBALL" --repo "$GH_REPO" --clobber
     }
 
     rm -f "$TARBALL"
-    echo "✓ Released at https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG"
+    echo "  ✓ Released at https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG"
 fi
 
-echo ""
-echo "Done."
+# ---------- closing reminders ----------
+
+cat <<EOF
+
+==========================================================
+  Publish complete.
+==========================================================
+
+NEXT STEPS — don't skip these:
+
+  1. ROTATE THE HF TOKEN
+     The token currently in HF_TOKEN was used during this session and may
+     have been pasted into shells / chat / logs. Rotate it now:
+        https://huggingface.co/settings/tokens
+     Delete the old token; create a new one with write access if you
+     expect to publish again.
+
+  2. TEAR DOWN THE POD
+     If you ran this from a RunPod pod, destroy it now — you've already
+     copied the artifacts to durable storage. Pods bill hourly.
+        runpodctl pod list
+        runpodctl pod remove <pod-id>
+
+  3. VERIFY THE PUBLISHED MODEL
+     Open the HF page and confirm the card rendered:
+EOF
+[[ "$GH_ONLY" -eq 0 ]] && echo "        https://huggingface.co/$HF_REPO"
+[[ "$HF_ONLY" -eq 0 ]] && echo "        https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG"
+echo "=========================================================="
