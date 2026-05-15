@@ -232,8 +232,11 @@ Let it ride if:
        root@<pod-ip>:/workspace/dave_adapter ./dave_adapter
    ```
 
-5. **Test the adapter** with a held-out prompt before declaring victory.
-   See `examples/` for inference snippets (TODO — not shipped yet).
+5. **Test the adapter** with a held-out prompt before declaring victory:
+   ```bash
+   python3 examples/infer.py --adapter "$DAVE_OUTPUT_DIR"
+   ```
+   See `examples/README.md` for full options.
 
 6. **Publish the adapter** to Hugging Face Hub (primary) and GitHub Release
    (mirror archive):

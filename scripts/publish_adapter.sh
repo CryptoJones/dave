@@ -28,6 +28,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ADAPTER_DIR="${DAVE_ADAPTER_DIR:-${DAVE_OUTPUT_DIR:-$REPO_DIR/dave_adapter}}"
+TRAIN_LOG="${DAVE_TRAIN_LOG:-/workspace/train.log}"
 HF_REPO="${HF_REPO:-Ronin48LLC/Dave-Llama-3.3-70B-QLoRA}"
 GH_REPO="${GH_REPO:-CryptoJones/dave}"
 RELEASE_TAG="${RELEASE_TAG:-v0.1.0}"
@@ -75,8 +76,18 @@ if [[ "$GH_ONLY" -eq 0 ]]; then
     # Create the repo if it doesn't exist (idempotent — yields friendly error if it does).
     $HF_CLI repo create "$HF_REPO" --type model --yes 2>&1 | grep -v "already created" || true
 
-    # Stage the model card so the HF page renders correctly.
+    # Stage the model card and inject training metrics from train.log.
     cp "$REPO_DIR/MODEL_CARD.md" "$ADAPTER_DIR/README.md"
+    if [[ -f "$TRAIN_LOG" ]]; then
+        echo "  parsing eval metrics from $TRAIN_LOG"
+        python3 "$REPO_DIR/scripts/inject_eval_metrics.py" \
+            --log "$TRAIN_LOG" \
+            --card "$ADAPTER_DIR/README.md" \
+        || echo "  (metric injection skipped — see error above; placeholders remain in card)"
+    else
+        echo "  no training log at $TRAIN_LOG — leaving metric placeholders in the card."
+        echo "  Set DAVE_TRAIN_LOG=/path/to/log to wire them up."
+    fi
 
     $HF_CLI upload "$HF_REPO" "$ADAPTER_DIR" . \
         --repo-type model \
