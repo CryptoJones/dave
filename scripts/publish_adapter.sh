@@ -28,7 +28,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ADAPTER_DIR="${DAVE_ADAPTER_DIR:-${DAVE_OUTPUT_DIR:-$REPO_DIR/dave_adapter}}"
-HF_REPO="${HF_REPO:-CryptoJones/Dave-Llama-3.3-70B-QLoRA}"
+HF_REPO="${HF_REPO:-Ronin48LLC/Dave-Llama-3.3-70B-QLoRA}"
 GH_REPO="${GH_REPO:-CryptoJones/dave}"
 RELEASE_TAG="${RELEASE_TAG:-v0.1.0}"
 

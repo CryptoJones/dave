@@ -3,7 +3,7 @@
 <!--
 This file is the model card uploaded to Hugging Face Hub alongside the
 adapter weights. It is rendered on the model page at
-https://huggingface.co/CryptoJones/Dave-Llama-3.3-70B-QLoRA (or whichever
+https://huggingface.co/Ronin48LLC/Dave-Llama-3.3-70B-QLoRA (or whichever
 repo you publish to). Sections below follow the HF model-card structure.
 -->
 
@@ -143,7 +143,7 @@ base = AutoModelForCausalLM.from_pretrained(
     torch_dtype=torch.bfloat16,
 )
 
-model = PeftModel.from_pretrained(base, "CryptoJones/Dave-Llama-3.3-70B-QLoRA")
+model = PeftModel.from_pretrained(base, "Ronin48LLC/Dave-Llama-3.3-70B-QLoRA")
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.3-70B-Instruct")
 ```
 

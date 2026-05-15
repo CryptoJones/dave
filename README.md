@@ -249,7 +249,7 @@ in the RunPod shell during a fine-tune.
 
 After training, the LoRA adapter is published to two places:
 
-- **Hugging Face Hub** (primary, canonical): https://huggingface.co/CryptoJones/Dave-Llama-3.3-70B-QLoRA
+- **Hugging Face Hub** (primary, canonical): https://huggingface.co/Ronin48LLC/Dave-Llama-3.3-70B-QLoRA
   Use this for `PeftModel.from_pretrained()` loading. See [MODEL_CARD.md](MODEL_CARD.md)
   for the full model card.
 - **GitHub Release** (mirror archive): the latest tag at
