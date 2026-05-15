@@ -123,6 +123,7 @@ Dave/
 ├── LICENSE
 ├── README.md
 ├── LIMITATIONS.md                          # Read before operational deployment
+├── TRAINING.md                             # Operator's guide for training runs
 ├── USAGE_POLICY.md
 ├── RUN_DAVE.sh                             # One-shot wrapper: build data → train
 ├── setup_dave.sh                           # Environment / dependency install
@@ -231,6 +232,16 @@ NF4 quantization with LoRA (r=16, α=32) on all attention and MLP projections, p
 **Resulting dataset (default config, no books):** ~11k prompt/completion pairs from
 Trail of Bits audits, CISA KEV, NIST, MITRE ATT&CK, and DHS BODs. See the next section
 for source breakdown.
+
+---
+
+## Training Dave
+
+For everything about launching a training run, reading the live metrics,
+deciding when to stop, picking the right checkpoint, and recovering from
+common failure modes (underfit / overfit / instability), see
+[TRAINING.md](TRAINING.md). It's the operator's guide for whoever is sitting
+in the RunPod shell during a fine-tune.
 
 ---
 
