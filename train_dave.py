@@ -144,7 +144,7 @@ def main() -> None:
         warmup_ratio=0.03,
         weight_decay=0.0,
         bf16=True,
-        max_seq_length=2048,
+        max_length=2048,
         packing=False,
         logging_steps=20,
         eval_strategy="steps",
