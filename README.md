@@ -4,6 +4,7 @@
 
 **An Open-Source Model Fine-Tuned for Security Assessment Report Writing**
 
+[![Tests](https://github.com/CryptoJones/dave/actions/workflows/test.yml/badge.svg)](https://github.com/CryptoJones/dave/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?logo=apache)](https://opensource.org/licenses/Apache-2.0)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Ronin48LLC%2FDave--Llama--3.3--70B--QLoRA-yellow)](https://huggingface.co/Ronin48LLC/Dave-Llama-3.3-70B-QLoRA)
 [![Codeberg](https://img.shields.io/badge/Codeberg-CryptoJones%2FDave-2185D0?logo=codeberg&logoColor=white)](https://codeberg.org/CryptoJones/Dave)

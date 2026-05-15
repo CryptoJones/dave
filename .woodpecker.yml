@@ -1,0 +1,24 @@
+# Woodpecker CI pipeline for Codeberg.
+#
+# To enable: visit https://ci.codeberg.org/ , sign in with your Codeberg
+# account, and toggle CI on for this repository. The first push after that
+# triggers a build.
+
+when:
+  - event: push
+  - event: pull_request
+
+steps:
+  - name: pytest
+    image: python:3.12-slim
+    commands:
+      - pip install --quiet --upgrade pip pytest
+      - python3 -m pytest tests/ -v -rs
+
+  - name: bash-syntax
+    image: bash:5
+    commands:
+      - bash -n setup_dave.sh
+      - bash -n build_training_data.sh
+      - bash -n RUN_DAVE.sh
+      - bash -n scripts/publish_adapter.sh
