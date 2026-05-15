@@ -406,4 +406,4 @@ Highlights:
   `bitsandbytes`, `accelerate` — without which this would still be a
   multi-million-dollar project.
 
-Proudly Made in Nebraska. Go Big Red! 🌽 https://xkcd.com/1654/
+Proudly Made in Nebraska. Go Big Red! 🌽 https://xkcd.com/2347/
