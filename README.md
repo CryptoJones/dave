@@ -38,7 +38,7 @@ of the practitioners who need it most.
 | Donor | Amount | Note |
 |---|---|---|
 | Joe Sixpack (Anonymous) | N/A | Founding donor |
-| AK Clark | $25 | |
+| CryptoJones (Aaron K. Clark) | $25 | |
 
 *Want to support Dave? Reach out to the maintainers.*
 
@@ -289,7 +289,7 @@ write them — open an issue or a pull request.
 
 **Apache License 2.0** — Copyright 2026 Aaron K. Clark. See [LICENSE](LICENSE).
 
-**Base Model Weights:** Meta Llama 3.1 Community License. Fine-tuned adapter weights and all
+**Base Model Weights:** Meta Llama 3.3 Community License. Fine-tuned adapter weights and all
 original Dave contributions remain Apache 2.0.
 
 ---
