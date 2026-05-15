@@ -37,7 +37,7 @@ of the practitioners who need it most.
 
 | Donor | Amount | Note |
 |---|---|---|
-| Ronin 48, LLC | N/A | Founding donor |
+| Joe Sixpack (Anonymous) | N/A | Founding donor |
 
 *Want to support Dave? Reach out to the maintainers.*
 
