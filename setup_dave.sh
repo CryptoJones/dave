@@ -4,13 +4,17 @@
 
 set -euo pipefail
 
+# --- Configurable paths ---
+DAVE_DATA_DIR="${DAVE_DATA_DIR:-$(pwd)/data}"
+DAVE_OUTPUT_DIR="${DAVE_OUTPUT_DIR:-/home/akclark/Source/adapters/dave}"
+
 echo "=== Dave Environment Setup ==="
-echo "This script prepares your environment to train Dave."
-echo "YOU must process your licensed books FIRST using process_books_nda.py"
-echo "Before running this script, ensure:"
-echo "  1. Your licensed books are in a directory (e.g., /home/akclark/books/)"
-echo "  2. You have run: python3 scripts/data_collection/process_books_nda.py /path/to/your/books"
-echo "  3. You have processed US-government resources and combined all JSONL into shuffled_training.jsonl"
+echo "Data directory:   $DAVE_DATA_DIR"
+echo "Adapter output:   $DAVE_OUTPUT_DIR"
+echo ""
+echo "Override with environment variables before running:"
+echo "  export DAVE_DATA_DIR=/path/to/data"
+echo "  export DAVE_OUTPUT_DIR=/path/to/adapters/dave"
 echo ""
 
 # Check if running as root (not recommended)
@@ -35,8 +39,13 @@ if python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null | gre
     echo "GPU: $gpu_name ($gpu_count x)"
     echo "VRAM: ${vram_gb}GB"
     if [ "$vram_gb" -lt 24 ]; then
-        echo "WARNING: Less than 24GB VRAM detected. Training may be slow or fail."
-        echo "Consider reducing batch_size in train_dafe.py or using 8-bit quantization."
+        echo "WARNING: Less than 24GB VRAM detected. Dave requires 40GB+ for 70B training."
+        echo "Consider using RunPod (A100 80GB) for training."
+        echo "Continue? (y/N)"
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
     fi
 else
     echo "WARNING: No CUDA-capable GPU detected. Training will be extremely slow on CPU."
@@ -47,12 +56,12 @@ else
     fi
 fi
 
-# Check required directories
-if [ ! -d "/home/akclark/Dave_repo/data/processed" ]; then
-    echo "Creating data directories..."
-    mkdir -p /home/akclark/Dave_repo/data/processed/books
-    mkdir -p /home/akclark/Dave_repo/data/processed/free_sources
-fi
+# Create required directories
+echo ""
+echo "Creating directories..."
+mkdir -p "${DAVE_DATA_DIR}/processed/books"
+mkdir -p "${DAVE_DATA_DIR}/processed/free_sources"
+mkdir -p "${DAVE_OUTPUT_DIR}"
 
 # Install dependencies
 echo ""
@@ -70,11 +79,10 @@ python3 -c "import peft; print('PEFT:', peft.__version__)"
 echo ""
 echo "=== Setup Complete ==="
 echo "Next steps:"
-echo "1. Ensure your shuffled_training.jsonl is in /home/akclark/Dave_repo/data/"
-echo "2. Run: python3 train_dave.py"
-echo "3. Monitor training - it may take several hours"
-echo "4. After training, your adapter will be in /home/akclark/Dave_repo/dave_model/"
+echo "1. Process your licensed books:"
+echo "   python3 scripts/data_collection/process_books_nda_fixed.py /path/to/your/books"
+echo "2. Run training:"
+echo "   DAVE_DATA_DIR=${DAVE_DATA_DIR} DAVE_OUTPUT_DIR=${DAVE_OUTPUT_DIR} python3 train_dave.py"
+echo "3. Adapter will be saved to: ${DAVE_OUTPUT_DIR}"
 echo ""
 echo "REMINDER: Dave is ONLY for authorized US security assessment report writing."
-echo "Never use it without explicit written permission for specific targets/techniques."
-echo ""
