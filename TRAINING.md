@@ -235,13 +235,37 @@ Let it ride if:
 5. **Test the adapter** with a held-out prompt before declaring victory.
    See `examples/` for inference snippets (TODO — not shipped yet).
 
-6. **Tear down the pod** as soon as you've confirmed weights landed safely:
+6. **Publish the adapter** to Hugging Face Hub (primary) and GitHub Release
+   (mirror archive):
+
+   ```bash
+   export HF_TOKEN=<write-permission token from huggingface.co/settings/tokens>
+   ./scripts/publish_adapter.sh
+   ```
+
+   The script:
+   - Creates the HF Hub repo (`CryptoJones/Dave-Llama-3.3-70B-QLoRA` by default)
+     and uploads the adapter weights + `MODEL_CARD.md` as the model README.
+   - Creates a GitHub Release on `CryptoJones/dave` with a tarball of the
+     adapter as an attachment, pointing at the HF Hub copy as the canonical
+     source.
+   - Use `--hf-only` or `--github-only` if you want just one side.
+   - Set `DAVE_ADAPTER_DIR=./dave_adapter/checkpoint-N` to publish a specific
+     checkpoint instead of the final save (recommended if eval loss showed
+     overfitting late in training).
+
+   The read-only HF token used for training **will not work** here — you need
+   a token with write access for the upload.
+
+7. **Tear down the pod** as soon as you've confirmed weights landed safely
+   (on HF Hub or wherever you've persisted them):
+
    ```bash
    runpodctl pod remove <pod-id>
    ```
 
    Pods bill by the hour whether they're training or idle. The first thing
-   you do after a successful adapter retrieve is destroy the pod.
+   you do after a successful adapter publish is destroy the pod.
 
 ---
 

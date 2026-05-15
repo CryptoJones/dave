@@ -124,6 +124,7 @@ Dave/
 ├── README.md
 ├── LIMITATIONS.md                          # Read before operational deployment
 ├── TRAINING.md                             # Operator's guide for training runs
+├── MODEL_CARD.md                           # Model card uploaded to HF Hub
 ├── USAGE_POLICY.md
 ├── RUN_DAVE.sh                             # One-shot wrapper: build data → train
 ├── setup_dave.sh                           # Environment / dependency install
@@ -136,6 +137,7 @@ Dave/
 │   ├── raw_github/                         # Cloned public sources (gitignored)
 │   └── shuffled_training.jsonl             # Final training file (~11k pairs)
 └── scripts/
+    ├── publish_adapter.sh                  # Upload trained adapter to HF Hub + GitHub Release
     └── data_collection/
         ├── process_cisa_kev.py             # CISA KEV catalog → JSONL
         ├── process_nist.py                 # NIST SP 800-30/53, NISTIR 8286
@@ -242,6 +244,20 @@ deciding when to stop, picking the right checkpoint, and recovering from
 common failure modes (underfit / overfit / instability), see
 [TRAINING.md](TRAINING.md). It's the operator's guide for whoever is sitting
 in the RunPod shell during a fine-tune.
+
+## Where to find Dave
+
+After training, the LoRA adapter is published to two places:
+
+- **Hugging Face Hub** (primary, canonical): https://huggingface.co/CryptoJones/Dave-Llama-3.3-70B-QLoRA
+  Use this for `PeftModel.from_pretrained()` loading. See [MODEL_CARD.md](MODEL_CARD.md)
+  for the full model card.
+- **GitHub Release** (mirror archive): the latest tag at
+  https://github.com/CryptoJones/dave/releases contains a tarball of the
+  adapter as an attachment.
+
+Run `./scripts/publish_adapter.sh` after training to push to both. See
+[TRAINING.md](TRAINING.md) step 6 for prerequisites.
 
 ---
 
