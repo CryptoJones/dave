@@ -41,7 +41,7 @@ of the practitioners who need it most.
 | Donor | Amount | Note |
 |---|---|---|
 | Joe Sixpack (Anonymous) | N/A | Founding donor |
-| CryptoJones (Aaron K. Clark) | $25 | |
+| CryptoJones (Aaron K. Clark) | $35 | |
 
 *Want to support Dave? Reach out to the maintainers.*
 
